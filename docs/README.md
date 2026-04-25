@@ -160,9 +160,3 @@ wanda/
 - **Tool packaging:** Model Context Protocol (FastMCP)
 - **Cloud:** Microsoft Fabric REST API, Fabric SQL endpoint, Microsoft Entra ID
 - **Drivers:** Microsoft ODBC Driver 18 (SQL endpoint), Service Principal auth
-
-## Bonus criteria
-
-- ✅ **Azure / Microsoft integration** (+10) — Fabric REST, Fabric SQL endpoint,
-  Microsoft Entra ID Service Principal authentication, Fabric Warehouse + Stored Procedure.
-- ✅ **APM** (+10) — see `apm.yml` and the feedback PR submitted to microsoft/Vancouver-Web-Summit-2026-GitHub-Copilot-SDK-Hackathon.
