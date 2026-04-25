@@ -160,7 +160,7 @@ The divergent tool paths are the proof that the agent is genuinely agentic.
 
 \# 1. Clone and enter the repo
 
-git clone https://github.com/<your-handle>/wanda.git
+git clone https://github.com/Timbermitch/wanda.git
 
 cd wanda
 
