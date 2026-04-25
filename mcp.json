@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "fabric": {
+      "type": "local",
+      "command": "python",
+      "args": ["src/fabric_mcp_server.py"],
+      "tools": ["*"],
+      "env": {
+        "FABRIC_TENANT_ID": "${FABRIC_TENANT_ID}",
+        "FABRIC_CLIENT_ID": "${FABRIC_CLIENT_ID}",
+        "FABRIC_CLIENT_SECRET": "${FABRIC_CLIENT_SECRET}",
+        "FABRIC_WORKSPACE_ID": "${FABRIC_WORKSPACE_ID}"
+      }
+    }
+  }
+}

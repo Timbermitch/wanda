@@ -1,0 +1,40 @@
+apiVersion: apm.github.com/v1
+kind: Agent
+metadata:
+  name: wanda
+  description: AI Data Engineer for Microsoft Fabric — investigates failed pipelines and produces evidence-backed root-cause reports
+  version: 0.1.0
+  authors:
+    - name: Matthew Arrogante
+  license: MIT
+  homepage: https://github.com/Timbermitch/wanda
+  tags:
+    - data-engineering
+    - microsoft-fabric
+    - pipeline-monitoring
+    - copilot-sdk
+    - mcp
+
+spec:
+  runtime: python
+  entrypoint: src/wanda.py
+
+  agents:
+    - file: AGENTS.md
+
+  mcp:
+    config: mcp.json
+
+  capabilities:
+    - investigate-fabric-pipelines
+    - read-pipeline-runs
+    - read-notebook-source
+    - query-sql-endpoint
+
+  permissions:
+    fabric:
+      - workspaces:read
+      - pipelines:read
+      - notebooks:read
+      - lakehouses:read
+      - sql-endpoint:query
