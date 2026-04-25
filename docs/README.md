@@ -328,13 +328,3 @@ tenant setting \*\*"Service principals can use Fabric APIs"\*\* must be enabled.
 
 
 
-\## Bonus criteria
-
-
-
-\- ✅ \*\*Azure / Microsoft integration\*\* (+10) — Fabric REST, Fabric SQL endpoint,
-
-&#x20; Microsoft Entra ID Service Principal authentication.
-
-\- ✅ \*\*APM\*\* (+10) — see `apm.yml`.
-
