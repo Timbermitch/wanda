@@ -58,8 +58,7 @@ def find_item_id(name, item_type=None):
 @mcp.tool
 def get_pipeline_run(pipeline_name: str) -> str:
     """Get the latest run of a Microsoft Fabric pipeline by name, including
-    failure details and the name of the failed activity. Use this first when
-    investigating a pipeline failure."""
+    status, activity details, and failure information if applicable."""
     pipeline_id = find_item_id(pipeline_name, "DataPipeline")
     if not pipeline_id:
         return f"Pipeline '{pipeline_name}' not found in workspace."
@@ -74,21 +73,41 @@ def get_pipeline_run(pipeline_name: str) -> str:
         return "No runs found for this pipeline."
 
     latest = runs[0]
-    failure = latest.get("failureReason", {})
+    status = latest.get("status", "Unknown")
+    failure = latest.get("failureReason", {}) or {}
     error_msg = failure.get("message", "No error message")
 
-    notebook_match = re.search(r"target (\w+) failed", error_msg)
-    failed_activity = notebook_match.group(1) if notebook_match else "unknown"
+    # Try to extract failed activity name from error message
+    failed_activity = "unknown"
+    patterns = [
+        r"Activity '([^']+)' failed",
+        r"activity '([^']+)' failed",
+        r"target (\w+) failed",
+        r"'([^']+)' activity failed",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, error_msg, re.IGNORECASE)
+        if match:
+            failed_activity = match.group(1)
+            break
 
-    return (
+    result = (
         f"Pipeline: {pipeline_name}\n"
         f"Run ID: {latest['id']}\n"
-        f"Status: {latest.get('status')}\n"
-        f"Failed activity: {failed_activity}\n"
+        f"Status: {status}\n"
         f"Start: {latest.get('startTimeUtc')}\n"
         f"End:   {latest.get('endTimeUtc')}\n"
-        f"Error message:\n{error_msg[:600]}"
     )
+
+    if status == "Failed":
+        result += (
+            f"Failed activity: {failed_activity}\n"
+            f"Error message:\n{error_msg[:800]}"
+        )
+    else:
+        result += f"Pipeline completed successfully. No failures detected."
+
+    return result
 
 # -----------------------------------------------------------------------------
 # TOOL 2 — get_notebook_source
