@@ -22,3 +22,6 @@ Thumbs.db
 *.egg-info/
 dist/
 build/
+
+# Wanda generated reports
+reports/

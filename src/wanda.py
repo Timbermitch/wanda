@@ -1,103 +1,196 @@
 """
 Wanda — agentic Microsoft Fabric pipeline investigator.
 
-This is the agent. It uses the GitHub Copilot SDK to drive an LLM that
-investigates pipeline failures by calling tools exposed via a local MCP
-server (fabric_mcp_server.py). The MCP server is launched automatically
-as a subprocess by the SDK.
+Two modes:
+  - investigate (default): root-cause a failed pipeline run
+  - scan (--scan): pre-run audit of a pipeline before execution
+
+Architecture (beta):
+
+    Wanda class / CLI (this file)
+        └── agent.py          provider-agnostic tool-use loop
+            ├── llm_provider.py   Claude (Anthropic direct or Azure) / Azure OpenAI
+            └── fabric_tools.py   the 6 Fabric tools, called inline — no subprocess
+
+    fabric_mcp_server.py exposes the same tools over MCP for external clients.
+
+The GitHub Copilot SDK runtime is gone: Wanda talks to its model provider
+directly, which is what lets it run inside a Fabric notebook (no subprocess)
+and switch providers via WANDA_PROVIDER without code changes.
+
+Library use (notebook or script):
+
+    from wanda import Wanda
+    wanda = Wanda(anthropic_api_key="sk-ant-...")   # or rely on .env
+    report = wanda.investigate("LoadSalesPipeline")
+    report.display()                                 # inline HTML in notebooks
 """
-import asyncio
-import os
+from __future__ import annotations
+
+import dataclasses
 import sys
+import time
 from pathlib import Path
-from copilot import CopilotClient
-from copilot.client import SubprocessConfig
-from copilot.session import PermissionRequestResult
 
-SYSTEM_MESSAGE = """You are Wanda, an expert data pipeline investigator for Microsoft Fabric.
+from agent import AgentStep, run_agent
+from config import ConfigError, load_config
+from fabric_tools import TOOL_SPECS, ensure_configured, execute_tool
+from llm_provider import ToolSpec, build_provider
+from log_setup import get_logger
+from render_report import build_html, render_report
 
-When asked to investigate a pipeline failure, follow this exact evidence chain:
+logger = get_logger("cli")
 
-1. Call get_pipeline_run with the pipeline name to get the failure details and the name of the failed activity.
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
-2. Call get_notebook_source using the exact failed activity name returned in step 1.
-
-3. Based on the error type, decide your next step:
-   - If the error is TABLE_OR_VIEW_NOT_FOUND or mentions a missing table/view:
-     Call query_sql_endpoint with this exact query:
-       SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES ORDER BY TABLE_NAME
-     This is T-SQL running against a Fabric SQL endpoint — do not use Spark SQL syntax like SHOW TABLES.
-     Use the result to state definitively which tables exist and confirm the missing one.
-   - If the error is clearly a code bug (AttributeError, wrong column name, syntax error, NameError):
-     Do NOT call query_sql_endpoint or list_lakehouse_tables.
-     The notebook source is sufficient evidence — stop and write the report.
-
-4. Write the final report using only evidence from your tool calls. Never guess.
-
-Strict output format — use exactly these headings:
-ROOT CAUSE: one definitive sentence
-EVIDENCE:
-  - Pipeline run: (run ID, status, failed activity, error type)
-  - Notebook source: (what the code is doing that causes the error)
-  - SQL check: (only if run — exact tables found, confirm missing table)
-RECOMMENDATION: one or two sentences on exactly what to change
-"""
-
-def log_and_approve(request, invocation):
-    """Permission handler that logs each MCP tool call and approves it."""
-    kind = request.kind.value if hasattr(request.kind, "value") else str(request.kind)
-    tool_name = getattr(request, "tool_name", None) or "?"
-    if kind == "mcp":
-        # Strip the server prefix that MCP adds (e.g. "fabric.get_pipeline_run")
-        clean_name = tool_name.split(".")[-1] if tool_name else "?"
-        print(f"  >>> MCP TOOL: {clean_name}")
-    return PermissionRequestResult(kind="approved")
-
-async def main():
-    pipeline_name = sys.argv[1] if len(sys.argv) > 1 else "LoadSalesPipeline"
-
-    # Path to the MCP server file we built
-    server_path = str(Path(__file__).parent / "fabric_mcp_server.py")
-
-    # MCP server config — the SDK will launch this as a subprocess and
-    # talk to it over stdio (the standard MCP transport for local servers)
-    mcp_servers = {
-        "fabric": {
-            "type": "local",
-            "command": "python",
-            "args": [server_path],
-            "tools": ["*"],  # Enable all tools from the Fabric MCP server
-        }
-    }
-
-    config = SubprocessConfig(use_logged_in_user=True)
-
-    async with CopilotClient(config) as client:
-        async with await client.create_session(
-            model="claude-sonnet-4.5",
-            on_permission_request=log_and_approve,
-            mcp_servers=mcp_servers,
-            system_message={"text": SYSTEM_MESSAGE},
-        ) as session:
-            done = asyncio.Event()
-
-            def on_event(event):
-                t = event.type.value if hasattr(event.type, "value") else str(event.type)
-                if t == "assistant.message":
-                    print("\n========== WANDA REPORT ==========")
-                    print(event.data.content)
-                    print("===================================\n")
-                elif t == "session.error":
-                    print("ERROR:", event.data.message)
-                elif t == "session.idle":
-                    done.set()
-
-            session.on(on_event)
-            await session.send(
-                f"The pipeline '{pipeline_name}' just failed. "
-                f"Investigate using the Fabric MCP tools and give me a root-cause report."
-            )
-            await done.wait()
+INVESTIGATE_REQUEST = (
+    "The pipeline '{pipeline}' just failed. "
+    "Investigate using the Fabric tools and give me a root-cause report."
+)
+SCAN_REQUEST = (
+    "Pre-run scan: audit the pipeline '{pipeline}' before it runs. "
+    "Use the Fabric tools to validate every activity against the workspace. "
+    "Report what will pass, what will fail, and exactly what needs to be fixed first."
+)
 
 
-asyncio.run(main())
+def load_prompt(name: str) -> str:
+    """Load a system prompt from prompts/<name>.md so prompts are versionable
+    and editable without touching code."""
+    path = PROMPTS_DIR / f"{name}.md"
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            f"System prompt '{name}' not found at {path}. "
+            "Expected prompts/investigate.md and prompts/scan.md in the repo."
+        ) from exc
+
+
+class WandaReport:
+    """The outcome of one investigation or scan."""
+
+    def __init__(self, content: str, pipeline_name: str, mode: str, model: str,
+                 duration_seconds: float, usage: dict[str, int], steps: list[AgentStep]):
+        self.content = content
+        self.pipeline_name = pipeline_name
+        self.mode = mode
+        self.model = model
+        self.duration_seconds = duration_seconds
+        self.usage = usage
+        self.steps = steps
+
+    @property
+    def text(self) -> str:
+        return self.content
+
+    def to_html(self) -> str:
+        """Self-contained HTML document for this report."""
+        return build_html(self.content, self.pipeline_name, self.mode,
+                          self.model, self.duration_seconds)
+
+    def save(self) -> Path:
+        """Write the HTML report to reports/ and return its path."""
+        return render_report(content=self.content, pipeline_name=self.pipeline_name,
+                             mode=self.mode, model=self.model,
+                             duration_seconds=self.duration_seconds)
+
+    def display(self) -> None:
+        """Render inline in a notebook output cell; falls back to print()."""
+        try:
+            from IPython.display import HTML, display
+            display(HTML(self.to_html()))
+        except ImportError:
+            print(self.content)
+
+    def __repr__(self) -> str:
+        return (f"<WandaReport {self.mode} '{self.pipeline_name}' "
+                f"{len(self.content)} chars, {len(self.steps)} tool calls>")
+
+
+class Wanda:
+    """Importable entry point: construct once, then .investigate() / .scan()."""
+
+    def __init__(self, anthropic_api_key: str | None = None,
+                 provider: str | None = None, model: str | None = None):
+        cfg = load_config()
+        overrides = {}
+        if anthropic_api_key:
+            overrides["anthropic_api_key"] = anthropic_api_key
+        if provider:
+            overrides["provider"] = provider
+        if model:
+            overrides["model"] = model
+        if overrides:
+            cfg = dataclasses.replace(cfg, **overrides)
+        self.config = cfg
+        self.provider = build_provider(cfg)  # validates LLM settings fail-fast
+        self._tool_specs = [ToolSpec(**spec) for spec in TOOL_SPECS]
+
+    def investigate(self, pipeline_name: str) -> WandaReport:
+        return self._run(pipeline_name, scan=False)
+
+    def scan(self, pipeline_name: str) -> WandaReport:
+        return self._run(pipeline_name, scan=True)
+
+    def _run(self, pipeline_name: str, scan: bool) -> WandaReport:
+        ensure_configured()  # fail fast on missing Fabric credentials
+        mode_label = "PRE-RUN SCAN" if scan else "INVESTIGATION"
+        system_prompt = load_prompt("scan" if scan else "investigate")
+        request = (SCAN_REQUEST if scan else INVESTIGATE_REQUEST).format(pipeline=pipeline_name)
+
+        logger.info("Wanda — %s — pipeline: %s — model: %s",
+                    mode_label, pipeline_name, self.provider.label)
+        start = time.time()
+        result = run_agent(
+            provider=self.provider,
+            system_prompt=system_prompt,
+            user_request=request,
+            tool_specs=self._tool_specs,
+            execute_tool=execute_tool,
+        )
+        duration = time.time() - start
+        logger.info("Done in %.1fs — %d tool calls over %d turns — tokens: %s",
+                    duration, len(result.steps), result.turns, result.usage or "n/a")
+
+        return WandaReport(content=result.report, pipeline_name=pipeline_name,
+                           mode=mode_label, model=self.provider.label,
+                           duration_seconds=duration, usage=result.usage,
+                           steps=result.steps)
+
+
+def main() -> None:
+    # Windows consoles default to cp1252, which can't encode emoji a model may
+    # put in a report. Force UTF-8 so printing never crashes the run.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+    # Parse args: support --scan flag
+    args = sys.argv[1:]
+    scan_mode = "--scan" in args
+    args = [a for a in args if a != "--scan"]
+    pipeline_name = args[0] if args else "LoadSalesPipeline"
+
+    try:
+        wanda = Wanda()
+        report = wanda.scan(pipeline_name) if scan_mode else wanda.investigate(pipeline_name)
+    except ConfigError as e:
+        logger.error("%s", e)
+        sys.exit(2)
+
+    # Save the HTML artifact first — a console hiccup must never lose the report.
+    report_path = report.save()
+
+    print("\n========== WANDA REPORT ==========")
+    print(report.content)
+    print("===================================\n")
+
+    logger.info("Report saved: %s", report_path)
+    logger.info("Open in browser: %s", report_path.resolve().as_uri())
+
+
+if __name__ == "__main__":
+    main()
