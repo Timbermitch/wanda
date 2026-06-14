@@ -41,8 +41,8 @@ from dataclasses import dataclass, field
 
 import requests
 
-from config import Config, ConfigError
-from log_setup import get_logger
+from .config import Config, ConfigError
+from .log_setup import get_logger
 
 logger = get_logger("llm")
 

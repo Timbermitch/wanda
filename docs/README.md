@@ -41,22 +41,23 @@ Python functions called **inline** — no subprocess — which is what lets Wand
 run anywhere from a CLI to a Fabric notebook.
 
 ```
-   Wanda class / CLI  (src/wanda.py)
+   Wanda class / CLI  (wanda.core / wanda.cli)
         │   .investigate() · .scan() → WandaReport
         ▼
-   Agent loop  (src/agent.py)        bounded tool-use loop
-        ├──────────────► LLM provider  (src/llm_provider.py)
+   Agent loop  (wanda.agent)         bounded tool-use loop
+        ├──────────────► LLM provider  (wanda.llm_provider)
         │                Claude (Anthropic / Azure) · GPT (Azure OpenAI)
-        └──────────────► 6 Fabric tools (src/fabric_tools.py)  ──► Microsoft
-                         inline — no subprocess                    Fabric
-                                                                  REST + SQL
+        └──────────────► 6 Fabric tools (wanda.fabric_tools)  ──► Microsoft
+                         inline — no subprocess                   Fabric
+                                                                 REST + SQL
 ```
 
-- `src/wanda.py` — the `Wanda` class and CLI. Imports the tools and runs the loop inline.
-- `src/agent.py` — provider-agnostic tool-use loop (bounded steps, result truncation, token accounting).
-- `src/llm_provider.py` — swappable LLM backend. `WANDA_PROVIDER` selects `anthropic`, `azure-openai`, or `azure-anthropic`. The Anthropic path uses prompt caching.
-- `src/fabric_tools.py` — the 6 Fabric tools as plain functions (REST + SQL), with retry/backoff and token refresh.
-- `src/fabric_mcp_server.py` — a thin **MCP** wrapper over the *same* 6 tools, so any MCP-compatible client (Claude Desktop, Cursor, VS Code) can use them too — see `mcp.json`.
+- `wanda.core` — the `Wanda` class and `WandaReport`. Imports the tools and runs the loop inline.
+- `wanda.cli` — the `wanda` command-line entry point.
+- `wanda.agent` — provider-agnostic tool-use loop (bounded steps, result truncation, token accounting).
+- `wanda.llm_provider` — swappable LLM backend. `WANDA_PROVIDER` selects `anthropic`, `azure-openai`, or `azure-anthropic`. The Anthropic path uses prompt caching.
+- `wanda.fabric_tools` — the 6 Fabric tools as plain functions (REST + SQL), with retry/backoff and token refresh.
+- `wanda.mcp_server` — a thin **MCP** wrapper over the *same* 6 tools, so any MCP-compatible client (Claude Desktop, Cursor, VS Code) can use them too — see `mcp.json`.
 
 ## Use it as a library (notebook or script)
 
@@ -102,23 +103,28 @@ The divergent tool paths are the proof that the agent is genuinely agentic.
 - ODBC Driver 18 for SQL Server (for the SQL endpoint tool)
 - An **Anthropic API key** (default), *or* an Azure OpenAI / Azure-hosted Claude deployment
 
-## Setup
+## Install
+
+Wanda is a pip-installable package (`wanda-fabric`).
 
 ```bash
-# 1. Clone and enter the repo
+# From the repo (development / local use)
 git clone https://github.com/cmlabs-ai/wanda.git
 cd wanda
-
-# 2. Create a virtual environment and install dependencies
 python -m venv .venv
-# Windows:
-.\.venv\Scripts\Activate.ps1
-# macOS/Linux:
-source .venv/bin/activate
+.\.venv\Scripts\Activate.ps1     # Windows  (macOS/Linux: source .venv/bin/activate)
+pip install -e ".[all]"          # core + sql (pyodbc) + mcp (fastmcp) extras
 
-pip install -r requirements.txt
+# Or, to use it elsewhere (e.g. a Fabric notebook), once published:
+# pip install wanda-fabric
+```
 
-# 3. Configure credentials
+Extras: `[sql]` adds `pyodbc` for the SQL-endpoint tools; `[mcp]` adds `fastmcp`
+for the standalone MCP server. The core install stays light for notebooks.
+
+Then configure credentials:
+
+```bash
 cp .env.example .env
 # Edit .env: Fabric Service Principal values + ANTHROPIC_API_KEY (and WANDA_PROVIDER if not "anthropic")
 ```
@@ -129,14 +135,16 @@ No GitHub Copilot login is required — Wanda calls the model provider directly.
 
 ```bash
 # Investigate a failed pipeline (default mode)
-python src/wanda.py LoadSalesPipeline
+wanda LoadSalesPipeline
 
 # Pre-run scan: audit a pipeline before it runs
-python src/wanda.py LoadSalesPipeline --scan
+wanda LoadSalesPipeline --scan
+
+# (equivalently: python -m wanda LoadSalesPipeline)
 ```
 
 You'll see each tool call logged to stderr as it happens, the final root-cause
-report printed, and a polished HTML report saved to `reports/`.
+report printed, and a polished HTML report saved to `./reports/`.
 
 ## Configuration
 
@@ -155,24 +163,26 @@ Set in `.env` (see `.env.example`):
 
 ```
 wanda/
-├── src/
-│   ├── wanda.py              Wanda class + CLI
+├── src/wanda/                the installable package (wanda-fabric)
+│   ├── __init__.py           exports Wanda, WandaReport
+│   ├── core.py               Wanda class + WandaReport
+│   ├── cli.py                command-line entry point (the `wanda` command)
+│   ├── __main__.py           enables `python -m wanda`
 │   ├── agent.py              provider-agnostic tool-use loop
 │   ├── llm_provider.py       swappable LLM backend (Anthropic / Azure OpenAI)
 │   ├── fabric_tools.py       the 6 Fabric tools (REST + SQL), called inline
-│   ├── fabric_mcp_server.py  thin MCP wrapper over the same tools
+│   ├── mcp_server.py         thin MCP wrapper over the same tools
 │   ├── config.py             typed, fail-fast configuration
 │   ├── log_setup.py          logging (stderr)
-│   └── render_report.py      text → self-contained HTML report
-├── prompts/
-│   ├── investigate.md        system prompt — investigation mode
-│   └── scan.md               system prompt — pre-run scan mode
+│   ├── render_report.py      text → self-contained HTML report
+│   └── prompts/              investigate.md, scan.md (bundled package data)
+├── notebooks/                template notebook for Fabric users
 ├── tests/                    34 offline tests (providers, agent loop, config)
 ├── docs/                     this README + architecture/business docs
 ├── presentations/            decks
 ├── reports/                  generated HTML reports (gitignored)
+├── pyproject.toml            packaging + dependencies
 ├── mcp.json                  MCP server config (for any MCP client)
-├── requirements.txt
 └── .env.example
 ```
 

@@ -38,14 +38,14 @@ wanda.py ──Copilot SDK──► LLM               Wanda class / CLI (wanda.p
 
 | Layer | File | Job |
 |---|---|---|
-| **Entry points** | `src/wanda.py` | `Wanda` class (`.investigate()` / `.scan()` → `WandaReport`) + the CLI. |
-| **Agent loop** | `src/agent.py` | Drive any provider through turns: model asks for tools → execute inline → feed results back → final report. Bounded (12 turns, 8K chars/tool result). |
-| **Provider abstraction** | `src/llm_provider.py` | One neutral dialect; each provider translates to its wire format. `WANDA_PROVIDER` = `anthropic` \| `azure-openai` \| `azure-anthropic`. Anthropic path has prompt caching (system prompt cached → ~90% cheaper on the static prefix every turn). |
-| **Tools** | `src/fabric_tools.py` | The 6 Fabric tools as plain functions + registry. Hardened REST layer (token cache/refresh, 429/5xx backoff, friendly 401/403/404 errors). Lazy config: importable without credentials. |
-| **MCP front door** | `src/fabric_mcp_server.py` | Thin FastMCP wrapper over the same 6 functions, for external MCP clients. |
-| **Config** | `src/config.py` | Typed, frozen, fail-fast validation per provider. All env-driven. |
-| **Prompts** | `prompts/*.md` | The investigate/scan system prompts, versionable outside code. |
-| **Reports** | `src/render_report.py` | Text → self-contained HTML; `build_html()` for inline notebook display, `render_report()` for files. |
+| **Entry points** | `wanda/core.py` · `wanda/cli.py` | `Wanda` class (`.investigate()` / `.scan()` → `WandaReport`) + the `wanda` CLI. |
+| **Agent loop** | `wanda/agent.py` | Drive any provider through turns: model asks for tools → execute inline → feed results back → final report. Bounded (12 turns, 8K chars/tool result). |
+| **Provider abstraction** | `wanda/llm_provider.py` | One neutral dialect; each provider translates to its wire format. `WANDA_PROVIDER` = `anthropic` \| `azure-openai` \| `azure-anthropic`. Anthropic path has prompt caching (system prompt cached → ~90% cheaper on the static prefix every turn). |
+| **Tools** | `wanda/fabric_tools.py` | The 6 Fabric tools as plain functions + registry. Hardened REST layer (token cache/refresh, 429/5xx backoff, friendly 401/403/404 errors). Lazy config: importable without credentials. |
+| **MCP front door** | `wanda/mcp_server.py` | Thin FastMCP wrapper over the same 6 functions, for external MCP clients. |
+| **Config** | `wanda/config.py` | Typed, frozen, fail-fast validation per provider. All env-driven. |
+| **Prompts** | `wanda/prompts/*.md` | The investigate/scan system prompts, bundled as package data. |
+| **Reports** | `wanda/render_report.py` | Text → self-contained HTML; `build_html()` for inline notebook display, `render_report()` for files. |
 | **Tests** | `tests/` | 34 offline tests: provider wire formats (mocked HTTP), agent loop (fake provider), config validation. |
 
 ## 3. Why this shape (the three constraints it solves)

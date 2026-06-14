@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wanda-fabric"
+version = "0.1.0"
+description = "An AI Data Engineer for Microsoft Fabric — investigates failed pipelines and produces evidence-backed root-cause reports."
+readme = "docs/README.md"
+requires-python = ">=3.11"
+authors = [{ name = "CM Labs" }]
+keywords = ["microsoft-fabric", "data-engineering", "llm", "agent", "root-cause-analysis"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Quality Assurance",
+]
+# Core stays dependency-light so it installs cleanly in a Fabric notebook.
+dependencies = [
+    "requests>=2.32",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# pyodbc powers the SQL-endpoint tools; absent it, those tools degrade gracefully.
+sql = ["pyodbc>=5"]
+# fastmcp powers the standalone MCP server (for Claude Desktop / Cursor / VS Code).
+mcp = ["fastmcp>=3"]
+all = ["pyodbc>=5", "fastmcp>=3"]
+
+[project.scripts]
+wanda = "wanda.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/cmlabs-ai/wanda"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+wanda = ["prompts/*.md"]

@@ -9,7 +9,7 @@ stderr — stdout is the JSON-RPC channel and must stay clean.
 """
 from fastmcp import FastMCP
 
-import fabric_tools as ft
+from . import fabric_tools as ft
 
 mcp = FastMCP("Fabric Pipeline Investigator")
 

@@ -1,22 +1,5 @@
 """
-Wanda — agentic Microsoft Fabric pipeline investigator.
-
-Two modes:
-  - investigate (default): root-cause a failed pipeline run
-  - scan (--scan): pre-run audit of a pipeline before execution
-
-Architecture (beta):
-
-    Wanda class / CLI (this file)
-        └── agent.py          provider-agnostic tool-use loop
-            ├── llm_provider.py   Claude (Anthropic direct or Azure) / Azure OpenAI
-            └── fabric_tools.py   the 6 Fabric tools, called inline — no subprocess
-
-    fabric_mcp_server.py exposes the same tools over MCP for external clients.
-
-The GitHub Copilot SDK runtime is gone: Wanda talks to its model provider
-directly, which is what lets it run inside a Fabric notebook (no subprocess)
-and switch providers via WANDA_PROVIDER without code changes.
+Wanda core — the Wanda class and WandaReport.
 
 Library use (notebook or script):
 
@@ -24,24 +7,26 @@ Library use (notebook or script):
     wanda = Wanda(anthropic_api_key="sk-ant-...")   # or rely on .env
     report = wanda.investigate("LoadSalesPipeline")
     report.display()                                 # inline HTML in notebooks
+
+The GitHub Copilot SDK runtime is gone: Wanda talks to its model provider
+directly, which is what lets it run inside a Fabric notebook (no subprocess)
+and switch providers via WANDA_PROVIDER without code changes.
 """
 from __future__ import annotations
 
 import dataclasses
-import sys
 import time
+from importlib.resources import files
 from pathlib import Path
 
-from agent import AgentStep, run_agent
-from config import ConfigError, load_config
-from fabric_tools import TOOL_SPECS, ensure_configured, execute_tool
-from llm_provider import ToolSpec, build_provider
-from log_setup import get_logger
-from render_report import build_html, render_report
+from .agent import AgentStep, run_agent
+from .config import load_config
+from .fabric_tools import TOOL_SPECS, ensure_configured, execute_tool
+from .llm_provider import ToolSpec, build_provider
+from .log_setup import get_logger
+from .render_report import build_html, render_report
 
-logger = get_logger("cli")
-
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+logger = get_logger("core")
 
 INVESTIGATE_REQUEST = (
     "The pipeline '{pipeline}' just failed. "
@@ -55,15 +40,14 @@ SCAN_REQUEST = (
 
 
 def load_prompt(name: str) -> str:
-    """Load a system prompt from prompts/<name>.md so prompts are versionable
-    and editable without touching code."""
-    path = PROMPTS_DIR / f"{name}.md"
+    """Load a bundled system prompt (wanda/prompts/<name>.md) as package data,
+    so prompts are versionable and ship inside the installed package."""
     try:
-        return path.read_text(encoding="utf-8")
-    except FileNotFoundError as exc:
+        return files(__package__).joinpath("prompts").joinpath(f"{name}.md").read_text(encoding="utf-8")
+    except (FileNotFoundError, ModuleNotFoundError, OSError, KeyError, IsADirectoryError) as exc:
         raise FileNotFoundError(
-            f"System prompt '{name}' not found at {path}. "
-            "Expected prompts/investigate.md and prompts/scan.md in the repo."
+            f"System prompt '{name}' not found. Expected wanda/prompts/investigate.md "
+            "and wanda/prompts/scan.md bundled with the package."
         ) from exc
 
 
@@ -90,7 +74,7 @@ class WandaReport:
                           self.model, self.duration_seconds)
 
     def save(self) -> Path:
-        """Write the HTML report to reports/ and return its path."""
+        """Write the HTML report to ./reports/ and return its path."""
         return render_report(content=self.content, pipeline_name=self.pipeline_name,
                              mode=self.mode, model=self.model,
                              duration_seconds=self.duration_seconds)
@@ -157,40 +141,3 @@ class Wanda:
                            mode=mode_label, model=self.provider.label,
                            duration_seconds=duration, usage=result.usage,
                            steps=result.steps)
-
-
-def main() -> None:
-    # Windows consoles default to cp1252, which can't encode emoji a model may
-    # put in a report. Force UTF-8 so printing never crashes the run.
-    for stream in (sys.stdout, sys.stderr):
-        try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
-        except (AttributeError, ValueError):
-            pass
-
-    # Parse args: support --scan flag
-    args = sys.argv[1:]
-    scan_mode = "--scan" in args
-    args = [a for a in args if a != "--scan"]
-    pipeline_name = args[0] if args else "LoadSalesPipeline"
-
-    try:
-        wanda = Wanda()
-        report = wanda.scan(pipeline_name) if scan_mode else wanda.investigate(pipeline_name)
-    except ConfigError as e:
-        logger.error("%s", e)
-        sys.exit(2)
-
-    # Save the HTML artifact first — a console hiccup must never lose the report.
-    report_path = report.save()
-
-    print("\n========== WANDA REPORT ==========")
-    print(report.content)
-    print("===================================\n")
-
-    logger.info("Report saved: %s", report_path)
-    logger.info("Open in browser: %s", report_path.resolve().as_uri())
-
-
-if __name__ == "__main__":
-    main()

@@ -27,6 +27,50 @@ Entry template:
 
 ---
 
+## 2026-06-14 — Wanda is a pip-installable package (`wanda-fabric`) + reviewed
+**Roadmap:** Phase 2 (packaging + template notebook)  ·  **Status:** ✅ done, reviewed, fixes applied
+**Files:** new `pyproject.toml`, restructured `src/*.py` → `src/wanda/` package
+(`__init__.py`, `__main__.py`, `core.py`, `cli.py`, `agent.py`, `llm_provider.py`,
+`fabric_tools.py`, `mcp_server.py` [was `fabric_mcp_server.py`], `config.py`,
+`log_setup.py`, `render_report.py`, `prompts/*.md`); new `notebooks/Wanda_Template.ipynb`;
+updated `mcp.json`, `tests/`, `docs/README.md`, `docs/WANDA_BETA_ARCHITECTURE.md`, `AGENTS.md`
+
+### What changed
+- **Restructured into a proper src-layout package.** Flat `src/wanda.py` split into
+  `core.py` (Wanda + WandaReport + load_prompt), `cli.py` (the `wanda` command), and
+  `__init__.py`/`__main__.py`. All internal imports are now package-relative.
+- **`pyproject.toml`** — `wanda-fabric` v0.1.0, console script `wanda = wanda.cli:main`,
+  light core deps (`requests`, `python-dotenv`) with optional extras `[sql]` (pyodbc),
+  `[mcp]` (fastmcp), `[all]`. Prompts ship as package data (`wanda/prompts/*.md`).
+- **Prompt loading** moved to `importlib.resources` so prompts resolve from the installed
+  package, not a relative path. **Reports** now write to `./reports/` under the caller's
+  CWD (env-overridable via `WANDA_REPORTS_DIR`), resolved at call time.
+- **Template notebook** — 3-step tester experience (install → paste keys → `wanda.investigate(...).display()`).
+
+### Review + fixes (3-lens adversarial workflow — no blockers/majors in the package itself)
+- Reviewer empirically built sdist+wheel, installed into a clean venv, ran all 34 tests
+  against the installed wheel, confirmed extras resolve and prompts are bundled.
+- Fixed: notebook git-install used deprecated `#egg=` (silently dropped `[sql]`) → PEP 508
+  `wanda-fabric[sql] @ git+…`; single-sourced `__version__` via `importlib.metadata`;
+  broadened `load_prompt` except; `render_report` resolves the reports dir at call time;
+  refreshed stale paths/tool-count/Copilot-SDK references in `fabric_tools` docstring,
+  `WANDA_BETA_ARCHITECTURE.md`, and `AGENTS.md` (now 6 tools, direct-provider runtime).
+
+### Verification
+- Editable install works; `from wanda import Wanda` + `wanda.__version__` (0.1.0) work;
+  prompts load via `importlib.resources`; `wanda LoadSalesPipeline` console script produced
+  a correct **live** root-cause report; built wheel bundles `wanda/prompts/{investigate,scan}.md`
+  + all 11 modules + the console entry point; all **34 tests pass** after the fixes.
+
+### Open / follow-ups
+- `requirements.txt` is now redundant with `pyproject.toml` (and contradicts the light-core
+  design) — recommend deleting it; left in place pending the user's call.
+- Commit the restructure to `cmlabs-ai/wanda` (user commits/pushes themselves).
+- `WANDA_ROADMAP.md` / `docs/CMLABS_AZURE_SETUP.md` still mention the old Copilot SDK runtime
+  in planning prose — low priority, historical.
+
+---
+
 ## 2026-06-13 — ✅ First live run of the rebuilt Wanda — PASSED
 **Roadmap:** Phase 1 verification  ·  **Status:** ✅ verified live end-to-end
 **Files:** small fix to `src/wanda.py` (UTF-8 stdout + save-before-print)

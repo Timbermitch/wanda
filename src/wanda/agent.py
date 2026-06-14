@@ -13,8 +13,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Callable
 
-from llm_provider import LLMProvider, ToolSpec
-from log_setup import get_logger
+from .llm_provider import LLMProvider, ToolSpec
+from .log_setup import get_logger
 
 logger = get_logger("agent")
 

@@ -3,9 +3,9 @@ fabric_tools.py — Wanda's Microsoft Fabric tools as plain Python functions.
 
 This is the single home of the 6 Fabric tools. Two front doors consume it:
 
-  - wanda.py imports the functions directly and calls them inline from the
-    agent loop ("inline mode" — what a Fabric notebook can run, no subprocess).
-  - fabric_mcp_server.py wraps the same functions with FastMCP so any
+  - wanda.core / wanda.cli import the functions directly and call them inline
+    from the agent loop ("inline mode" — what a Fabric notebook can run, no subprocess).
+  - wanda.mcp_server wraps the same functions with FastMCP so any
     MCP-compatible client (Claude Desktop, Cursor, VS Code) can use them too.
 
 Configuration is resolved lazily on first use, so importing this module never
@@ -21,8 +21,8 @@ import time
 
 import requests
 
-from config import Config, load_config
-from log_setup import get_logger
+from .config import Config, load_config
+from .log_setup import get_logger
 
 logger = get_logger("fabric")
 

@@ -6,8 +6,8 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import llm_provider as lp
-from config import Config, ConfigError
+from wanda import llm_provider as lp
+from wanda.config import Config, ConfigError
 
 
 def fake_response(status=200, json_data=None, headers=None, text=""):

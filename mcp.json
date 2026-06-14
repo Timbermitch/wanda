@@ -3,7 +3,7 @@
     "fabric": {
       "type": "local",
       "command": "python",
-      "args": ["src/fabric_mcp_server.py"],
+      "args": ["-m", "wanda.mcp_server"],
       "tools": ["*"],
       "env": {
         "FABRIC_TENANT_ID": "${FABRIC_TENANT_ID}",

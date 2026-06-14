@@ -5,8 +5,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from agent import MAX_TOOL_RESULT_CHARS, run_agent
-from llm_provider import ToolCall, ToolSpec, TurnResult
+from wanda.agent import MAX_TOOL_RESULT_CHARS, run_agent
+from wanda.llm_provider import ToolCall, ToolSpec, TurnResult
 
 TOOLS = [ToolSpec(name="get_pipeline_run", description="d",
                   input_schema={"type": "object", "properties": {}})]

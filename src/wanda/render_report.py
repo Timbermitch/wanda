@@ -3,11 +3,16 @@ render_report.py — converts Wanda's text reports into polished, self-contained
 HTML files saved to the reports/ directory. No external CSS/JS dependencies.
 """
 import html
+import os
 import re
 from datetime import datetime
 from pathlib import Path
 
-REPORTS_DIR = Path(__file__).parent.parent / "reports"
+def _reports_dir() -> Path:
+    """Where reports are written — resolved at call time so it follows the
+    caller's working directory (and an optional WANDA_REPORTS_DIR override),
+    not the installed package location."""
+    return Path(os.environ.get("WANDA_REPORTS_DIR", Path.cwd() / "reports"))
 
 CSS = """
 :root {
@@ -652,13 +657,14 @@ def build_html(content, pipeline_name, mode, model="unknown", duration_seconds=0
 
 def render_report(content, pipeline_name, mode, model="unknown", duration_seconds=0.0):
     """Write a polished HTML report for a Wanda run and return the file Path."""
-    REPORTS_DIR.mkdir(exist_ok=True)
+    reports_dir = _reports_dir()
+    reports_dir.mkdir(parents=True, exist_ok=True)
     now = datetime.now()
     timestamp_slug = now.strftime("%Y-%m-%d_%H-%M-%S")
     mode_slug = mode.lower().replace(" ", "_").replace("-", "_")
     safe_pipeline = re.sub(r"[^A-Za-z0-9_\-]+", "_", pipeline_name)
     filename = f"{safe_pipeline}_{timestamp_slug}_{mode_slug}.html"
-    out_path = REPORTS_DIR / filename
+    out_path = reports_dir / filename
 
     html_doc = build_html(content, pipeline_name, mode, model, duration_seconds, now)
     out_path.write_text(html_doc, encoding="utf-8")

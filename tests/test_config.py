@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from config import Config, ConfigError, _clean
+from wanda.config import Config, ConfigError, _clean
 
 
 def make_config(**kw):
