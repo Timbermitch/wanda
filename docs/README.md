@@ -2,13 +2,13 @@
 
 > An AI Data Engineer for Microsoft Fabric. Hours → minutes for pipeline root-cause analysis.
 
-Wanda is an AI Data Engineer built on the **GitHub Copilot SDK** that
-investigates failed Microsoft Fabric pipelines and produces evidence-backed
-root-cause reports. The agent reaches Fabric through a custom **Model
-Context Protocol (MCP) server** that wraps the Fabric REST API and SQL
-endpoint.
+Wanda is an AI Data Engineer that investigates failed Microsoft Fabric pipelines
+and produces evidence-backed root-cause reports. It drives an LLM (Claude by
+default) through an agentic tool-use loop, reaching Fabric directly through the
+Fabric REST API and SQL endpoint.
 
-Submitted to the **Vancouver Web Summit 2026 GitHub Copilot SDK Hackathon**.
+A CM Labs product — born at the **GitHub Copilot SDK Hackathon (Web Summit
+Vancouver 2026)** and since rebuilt for real-world use.
 
 ## Problem
 
@@ -36,41 +36,60 @@ investigation paths.
 
 ## Architecture
 
+The model talks to its provider **directly**, and the Fabric tools are plain
+Python functions called **inline** — no subprocess — which is what lets Wanda
+run anywhere from a CLI to a Fabric notebook.
+
 ```
-┌──────────────────┐         ┌──────────────────────────┐
-│   wanda.py       │   MCP   │  fabric_mcp_server.py    │       Microsoft
-│   (agent loop)   │ ◄─────► │  (4 Fabric tools)        │ ────► Fabric
-│   Copilot SDK    │  stdio  │  FastMCP                 │       REST + SQL
-└──────────────────┘         └──────────────────────────┘
+   Wanda class / CLI  (src/wanda.py)
+        │   .investigate() · .scan() → WandaReport
+        ▼
+   Agent loop  (src/agent.py)        bounded tool-use loop
+        ├──────────────► LLM provider  (src/llm_provider.py)
+        │                Claude (Anthropic / Azure) · GPT (Azure OpenAI)
+        └──────────────► 6 Fabric tools (src/fabric_tools.py)  ──► Microsoft
+                         inline — no subprocess                    Fabric
+                                                                  REST + SQL
 ```
 
-- `src/wanda.py` — Copilot SDK agent. Drives the LLM, makes tool decisions.
-- `src/fabric_mcp_server.py` — MCP server exposing four tools over stdio.
-- The Copilot SDK launches the MCP server as a subprocess automatically.
+- `src/wanda.py` — the `Wanda` class and CLI. Imports the tools and runs the loop inline.
+- `src/agent.py` — provider-agnostic tool-use loop (bounded steps, result truncation, token accounting).
+- `src/llm_provider.py` — swappable LLM backend. `WANDA_PROVIDER` selects `anthropic`, `azure-openai`, or `azure-anthropic`. The Anthropic path uses prompt caching.
+- `src/fabric_tools.py` — the 6 Fabric tools as plain functions (REST + SQL), with retry/backoff and token refresh.
+- `src/fabric_mcp_server.py` — a thin **MCP** wrapper over the *same* 6 tools, so any MCP-compatible client (Claude Desktop, Cursor, VS Code) can use them too — see `mcp.json`.
 
-Because the tools are exposed over MCP, any MCP-compatible client (Claude
-Desktop, Cursor, VS Code Copilot) can use them too — see `mcp.json`.
+## Use it as a library (notebook or script)
+
+```python
+from wanda import Wanda
+
+wanda = Wanda(anthropic_api_key="sk-ant-...")   # or rely on .env
+report = wanda.investigate("LoadSalesPipeline")
+report.display()                                 # inline HTML in a notebook
+print(report.text)                               # or the raw text
+```
 
 ## Demo scenarios
 
-Three demo pipelines in the Fabric workspace, each failing in a different way.
-The agent takes a different investigation path for each:
+Demo pipelines in the Fabric workspace, each failing in a different way. The
+agent takes a different investigation path for each.
 
-**Scenario 1 — `LoadSalesPipeline`** (missing table)
-1. `get_pipeline_run` → finds `TABLE_OR_VIEW_NOT_FOUND` for `SalesStaging`
-2. `get_notebook_source` → reads the offending `INSERT INTO SalesStaging` line
-3. `query_sql_endpoint` → confirms `SalesStaging` does not exist in the lakehouse
+**Scenario 1 — `LoadSalesPipeline`** (missing table — *verified live run*)
+1. `get_pipeline_run` / `get_pipeline_definition` → identifies the failing activity `Write_Gold_Orders`
+2. `get_notebook_source` (×3) → reads the notebooks and finds `Write_Gold_Orders` reads `order_enriched` (missing the **s**) instead of `orders_enriched`
+3. `query_sql_endpoint` → confirms `orders_enriched` exists in the lakehouse but `order_enriched` does not → `TABLE_OR_VIEW_NOT_FOUND`
+4. Reports the exact line to fix
 
 **Scenario 2 — `TransformSalesPipeline`** (code bug)
-1. `get_pipeline_run` → finds `AttributeError: 'DataFrame' has no attribute 'Revenue'`
-2. `get_notebook_source` → reads the offending `df.Revenue` reference
-3. Skips SQL check — code bug, not a missing table
+1. `get_pipeline_run` → finds an `AttributeError` (e.g. a wrong DataFrame column reference)
+2. `get_notebook_source` → reads the offending line
+3. Skips the SQL check — code bug, not a missing table
 
 **Scenario 3 — `DailySalesETL`** (multi-activity ETL chain)
-A 5-activity pipeline: Copy data → cleanup notebook → parallel branches (aggregate notebook + stored procedure) → summarize notebook.
-1. `get_pipeline_run` → identifies `Aggregate_Data` as the failed activity in the chain
-2. `get_notebook_source` → reads the notebook, finds wrong column name
-3. Reports: Copy succeeded, cleanup succeeded, stored procedure succeeded — only `Aggregate_Data` failed
+A multi-activity pipeline: Copy → cleanup notebook → parallel branches (aggregate notebook + stored procedure) → summarize notebook.
+1. `get_pipeline_definition` → walks the activity graph
+2. `get_pipeline_run` → identifies the single failed activity in the chain
+3. Reports which activities succeeded and which one failed, with the root cause
 
 The divergent tool paths are the proof that the agent is genuinely agentic.
 
@@ -79,15 +98,15 @@ The divergent tool paths are the proof that the agent is genuinely agentic.
 - Windows or macOS, Python 3.11+
 - An Azure tenant with a Microsoft Fabric trial or capacity
 - A Fabric workspace with a Lakehouse, demo pipelines, and notebooks
-- An Entra ID App Registration (Service Principal) with Contributor access
+- An Entra ID App Registration (Service Principal) with access to the workspace
 - ODBC Driver 18 for SQL Server (for the SQL endpoint tool)
-- The GitHub Copilot CLI installed (`npm i -g @github/copilot`)
+- An **Anthropic API key** (default), *or* an Azure OpenAI / Azure-hosted Claude deployment
 
 ## Setup
 
 ```bash
 # 1. Clone and enter the repo
-git clone https://github.com/Timbermitch/wanda.git
+git clone https://github.com/cmlabs-ai/wanda.git
 cd wanda
 
 # 2. Create a virtual environment and install dependencies
@@ -101,68 +120,80 @@ pip install -r requirements.txt
 
 # 3. Configure credentials
 cp .env.example .env
-# Then edit .env with your Fabric tenant, workspace, and Service Principal values
-
-# 4. Authenticate the Copilot CLI once
-copilot
-# Follow the device-code prompt to sign in
+# Edit .env: Fabric Service Principal values + ANTHROPIC_API_KEY (and WANDA_PROVIDER if not "anthropic")
 ```
+
+No GitHub Copilot login is required — Wanda calls the model provider directly.
 
 ## Run
 
 ```bash
-# Investigate the missing-table pipeline
+# Investigate a failed pipeline (default mode)
 python src/wanda.py LoadSalesPipeline
 
-# Investigate the code-bug pipeline
-python src/wanda.py TransformSalesPipeline
-
-# Investigate the multi-activity ETL pipeline
-python src/wanda.py DailySalesETL
+# Pre-run scan: audit a pipeline before it runs
+python src/wanda.py LoadSalesPipeline --scan
 ```
 
-You'll see the agent's narration, each MCP tool call as it happens, and the
-final root-cause report.
+You'll see each tool call logged to stderr as it happens, the final root-cause
+report printed, and a polished HTML report saved to `reports/`.
+
+## Configuration
+
+Set in `.env` (see `.env.example`):
+
+| Variable | Purpose |
+|---|---|
+| `FABRIC_TENANT_ID` / `FABRIC_CLIENT_ID` / `FABRIC_CLIENT_SECRET` / `FABRIC_WORKSPACE_ID` | Service Principal + workspace |
+| `WANDA_PROVIDER` | `anthropic` (default) · `azure-openai` · `azure-anthropic` |
+| `ANTHROPIC_API_KEY` | for the default `anthropic` provider |
+| `WANDA_MODEL` | optional model override (default `claude-sonnet-4-6`) |
+| `AZURE_OPENAI_*` / `AZURE_ANTHROPIC_*` | for the Azure providers |
+| `WANDA_LOG_LEVEL` | logging verbosity (default `INFO`) |
 
 ## Repository layout
 
 ```
 wanda/
 ├── src/
-│   ├── wanda.py              Agent — Copilot SDK + MCP client
-│   └── fabric_mcp_server.py  MCP server — 4 tools over Fabric APIs
-├── docs/
-│   └── README.md             This file
-├── presentations/
-│   └── Wanda.pptx            Hackathon deck
-├── AGENTS.md                 Agent persona, rules, report format
-├── apm.yml                   Agent Package Manifest (APM)
+│   ├── wanda.py              Wanda class + CLI
+│   ├── agent.py              provider-agnostic tool-use loop
+│   ├── llm_provider.py       swappable LLM backend (Anthropic / Azure OpenAI)
+│   ├── fabric_tools.py       the 6 Fabric tools (REST + SQL), called inline
+│   ├── fabric_mcp_server.py  thin MCP wrapper over the same tools
+│   ├── config.py             typed, fail-fast configuration
+│   ├── log_setup.py          logging (stderr)
+│   └── render_report.py      text → self-contained HTML report
+├── prompts/
+│   ├── investigate.md        system prompt — investigation mode
+│   └── scan.md               system prompt — pre-run scan mode
+├── tests/                    34 offline tests (providers, agent loop, config)
+├── docs/                     this README + architecture/business docs
+├── presentations/            decks
+├── reports/                  generated HTML reports (gitignored)
 ├── mcp.json                  MCP server config (for any MCP client)
 ├── requirements.txt
-├── .env.example
-└── .gitignore
+└── .env.example
 ```
 
 ## Responsible AI notes
 
-- Wanda is read-only. The agent calls Fabric REST and SQL endpoints in read
-  mode only. It does not modify pipelines, notebooks, or table data.
-- Credentials live in `.env` and are never logged or sent to the LLM. The
-  Copilot SDK passes them to the MCP server as environment variables.
-- The system message restricts Wanda to evidence-based reporting.
-  Recommendations are descriptive ("change `Revenue` to `Amount`"), never
-  prescriptive actions Wanda performs itself.
-- Service Principal authentication scopes Wanda's access to a single workspace.
+- **Read-only.** Wanda calls Fabric REST and SQL endpoints in read mode only. It does not modify pipelines, notebooks, or table data.
+- **Secrets stay local.** Credentials live in `.env` (gitignored) and are never logged or sent to the LLM.
+- **Evidence-based.** The system prompts restrict Wanda to evidence from its tool calls. Recommendations are descriptive ("change `order_enriched` to `orders_enriched`"), never actions Wanda performs itself.
+- **Scoped access.** Service Principal authentication scopes Wanda's access to a single workspace.
 
 ## Tech stack
 
-- **Agent runtime:** GitHub Copilot SDK (Python)
-- **Tool packaging:** Model Context Protocol (FastMCP)
+- **Agent runtime:** custom tool-use loop calling the LLM provider directly (Anthropic Messages API / Azure OpenAI), dependency-light (`requests`, no vendor SDKs)
+- **Tools:** plain Python functions, also exposed via the Model Context Protocol (FastMCP)
 - **Cloud:** Microsoft Fabric REST API, Fabric SQL endpoint, Microsoft Entra ID
 - **Drivers:** Microsoft ODBC Driver 18 (SQL endpoint), Service Principal auth
 
-## Bonus criteria
+## Origin
 
-- ✅ **Azure / Microsoft integration** (+10) — Fabric REST, Fabric SQL endpoint,
-  Microsoft Entra ID Service Principal authentication, Fabric Warehouse + Stored Procedure.
-- ✅ **APM** (+10) — see `apm.yml` and the feedback PR submitted to microsoft/Vancouver-Web-Summit-2026-GitHub-Copilot-SDK-Hackathon.
+Wanda began at the **GitHub Copilot SDK Hackathon** (Web Summit Vancouver 2026),
+where the original prototype ran on the GitHub Copilot SDK with an MCP subprocess.
+It has since been rebuilt by **CM Labs** to call its model provider directly,
+run inline (notebook-ready), and switch LLM providers via configuration —
+the foundation for a Microsoft Fabric beta.
