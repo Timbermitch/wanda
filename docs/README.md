@@ -108,19 +108,25 @@ The divergent tool paths are the proof that the agent is genuinely agentic.
 Wanda is a pip-installable package (`wanda-fabric`).
 
 ```bash
-# From the repo (development / local use)
+pip install "wanda-fabric[sql]"
+```
+
+The `[sql]` extra adds `pyodbc` for the SQL-endpoint tools; `[mcp]` adds `fastmcp`
+for the standalone MCP server; `[all]` adds both. The core install stays light for
+notebooks. The SQL tools also need the OS-level **ODBC Driver 18 for SQL Server**.
+
+**New here?** [docs/GETTING_STARTED.md](GETTING_STARTED.md) walks the full first-time
+setup (Service Principal, ODBC driver, API key) in ~15 minutes.
+
+*CM Labs internal — develop from the private repo:*
+
+```bash
 git clone https://github.com/cmlabs-ai/wanda.git
 cd wanda
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1     # Windows  (macOS/Linux: source .venv/bin/activate)
 pip install -e ".[all]"          # core + sql (pyodbc) + mcp (fastmcp) extras
-
-# Or, to use it elsewhere (e.g. a Fabric notebook), once published:
-# pip install wanda-fabric
 ```
-
-Extras: `[sql]` adds `pyodbc` for the SQL-endpoint tools; `[mcp]` adds `fastmcp`
-for the standalone MCP server. The core install stays light for notebooks.
 
 Then configure credentials:
 
@@ -133,18 +139,23 @@ No GitHub Copilot login is required — Wanda calls the model provider directly.
 
 ## Run
 
+Point Wanda at a pipeline that failed in **your** workspace:
+
 ```bash
 # Investigate a failed pipeline (default mode)
-wanda LoadSalesPipeline
+wanda "Your Failed Pipeline Name"
 
 # Pre-run scan: audit a pipeline before it runs
-wanda LoadSalesPipeline --scan
+wanda "Your Pipeline Name" --scan
 
-# (equivalently: python -m wanda LoadSalesPipeline)
+# (equivalently: python -m wanda "Your Pipeline Name")
 ```
 
 You'll see each tool call logged to stderr as it happens, the final root-cause
 report printed, and a polished HTML report saved to `./reports/`.
+
+> The demo scenarios below run against CM Labs' own demo workspace
+> (`LoadSalesPipeline`, etc.) — substitute your own pipeline names.
 
 ## Configuration
 
@@ -188,8 +199,9 @@ wanda/
 
 ## Responsible AI notes
 
-- **Read-only.** Wanda calls Fabric REST and SQL endpoints in read mode only. It does not modify pipelines, notebooks, or table data.
-- **Secrets stay local.** Credentials live in `.env` (gitignored) and are never logged or sent to the LLM.
+- **Read-only — enforced in code.** Wanda calls Fabric REST and SQL endpoints in read mode only; the SQL tools reject anything that isn't a `SELECT`/`WITH` query, so Wanda cannot modify pipelines, notebooks, or table data.
+- **Secrets stay local.** Credentials live in `.env` (gitignored) and are never logged, sent to the LLM, or written into reports.
+- **Minimal data exposure.** Notebook source, pipeline structure, and table/column names go to the LLM so it can reason. A pre-run scan may read a *small sample* of rows (e.g. `SELECT TOP 1 *`) to validate data — never bulk data.
 - **Evidence-based.** The system prompts restrict Wanda to evidence from its tool calls. Recommendations are descriptive ("change `order_enriched` to `orders_enriched`"), never actions Wanda performs itself.
 - **Scoped access.** Service Principal authentication scopes Wanda's access to a single workspace.
 

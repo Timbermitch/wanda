@@ -19,6 +19,7 @@ import time
 from importlib.resources import files
 from pathlib import Path
 
+from . import telemetry
 from .agent import AgentStep, run_agent
 from .config import load_config
 from .fabric_tools import TOOL_SPECS, ensure_configured, execute_tool
@@ -87,6 +88,19 @@ class WandaReport:
         except ImportError:
             print(self.content)
 
+    def feedback(self, useful: bool, note: str = "") -> None:
+        """Tell CM Labs whether this report helped: report.feedback(True, "nailed it").
+
+        Sends an anonymous thumbs up/down plus your optional note — only if you've
+        opted into telemetry (WANDA_TELEMETRY=on). Nothing about your data is sent."""
+        telemetry.emit("feedback", mode=self.mode, useful=bool(useful),
+                       note=(note or "")[:500])
+        if telemetry.is_enabled():
+            print("Thanks — your feedback was sent. 🙏")
+        else:
+            print("Telemetry is off, so nothing was sent. Set WANDA_TELEMETRY=on to "
+                  "share feedback this way, or use the feedback form from your invite.")
+
     def __repr__(self) -> str:
         return (f"<WandaReport {self.mode} '{self.pipeline_name}' "
                 f"{len(self.content)} chars, {len(self.steps)} tool calls>")
@@ -126,16 +140,28 @@ class Wanda:
         logger.info("Wanda — %s — pipeline: %s — model: %s",
                     mode_label, pipeline_name, self.provider.label)
         start = time.time()
-        result = run_agent(
-            provider=self.provider,
-            system_prompt=system_prompt,
-            user_request=request,
-            tool_specs=self._tool_specs,
-            execute_tool=execute_tool,
-        )
+        try:
+            result = run_agent(
+                provider=self.provider,
+                system_prompt=system_prompt,
+                user_request=request,
+                tool_specs=self._tool_specs,
+                execute_tool=execute_tool,
+            )
+        except Exception as exc:
+            # Operational signal only — the exception CLASS name, never its message
+            # (Fabric/LLM error text can contain names), and never the pipeline name.
+            telemetry.emit("run", status="error", mode=mode_label,
+                           error=type(exc).__name__)
+            raise
         duration = time.time() - start
         logger.info("Done in %.1fs — %d tool calls over %d turns — tokens: %s",
                     duration, len(result.steps), result.turns, result.usage or "n/a")
+
+        telemetry.emit("run", status="ok", mode=mode_label,
+                       duration_seconds=round(duration, 1),
+                       tool_calls=len(result.steps), turns=result.turns,
+                       usage=result.usage)
 
         return WandaReport(content=result.report, pipeline_name=pipeline_name,
                            mode=mode_label, model=self.provider.label,

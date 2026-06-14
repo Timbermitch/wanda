@@ -34,8 +34,24 @@ def main() -> None:
         wanda = Wanda()
         report = wanda.scan(pipeline_name) if scan_mode else wanda.investigate(pipeline_name)
     except ConfigError as e:
-        logger.error("%s", e)
+        # Missing/invalid configuration — the message says exactly what to set.
+        logger.error("Configuration problem: %s", e)
         sys.exit(2)
+    except KeyboardInterrupt:
+        logger.error("Interrupted.")
+        sys.exit(130)
+    except Exception as e:  # a tester must never be greeted by a raw traceback
+        # The LLM and Fabric layers already raise plain-English messages
+        # (invalid/unfunded API key, wrong Service Principal secret, 401/403/404).
+        # Surface that and the usual culprits — never a stack trace.
+        logger.error("Wanda could not complete the run: %s", e)
+        logger.error(
+            "Most first-run failures are one of: an invalid or unfunded LLM API key, "
+            "a wrong Fabric Service Principal secret, or a pipeline name that doesn't "
+            "exist in this workspace. Re-check your .env values and the pipeline name. "
+            "See docs/GETTING_STARTED.md for the full setup."
+        )
+        sys.exit(1)
 
     # Save the HTML artifact first — a console hiccup must never lose the report.
     report_path = report.save()

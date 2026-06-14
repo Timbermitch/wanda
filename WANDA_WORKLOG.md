@@ -27,6 +27,74 @@ Entry template:
 
 ---
 
+## 2026-06-14 — Opt-in telemetry + feedback loop (last beta blocker I own)
+**Roadmap:** Phase 2 (beta prep)  ·  **Status:** client side built; endpoint + form are Matthew's
+**Files:** new `src/wanda/telemetry.py`, `docs/FEEDBACK_FORM.md`, `tests/test_telemetry.py`;
+changed `src/wanda/core.py`, `.env.example`, `docs/GETTING_STARTED.md`, `notebooks/Wanda_Template.ipynb`
+
+### What changed
+- `telemetry.py`: **opt-in** (`WANDA_TELEMETRY=on` + `WANDA_TELEMETRY_URL`), anonymous,
+  fire-and-forget daemon-thread POST that can never block or break a run. Sends *operational*
+  metrics only — event, status, mode, duration, tool_calls, turns, token usage, a random
+  install id, version, python, os — and **never** pipeline/table names, queries, data, or secrets.
+- `core._run()` emits a `run` event (ok/error; error = exception CLASS name only, never the message);
+  `WandaReport.feedback(useful, note)` sends an anonymous 👍/👎 for notebook testers.
+- `docs/FEEDBACK_FORM.md`: a paste-ready ~2-min form built around the three things a beta must
+  learn — **accuracy, time saved, willingness-to-pay** — plus a "how to read the results" guide.
+- Opt-in disclosure added to `.env.example`, `GETTING_STARTED.md`, and the notebook's closing cell.
+
+### Verification
+- **43 tests pass** (+5 telemetry: off-by-default · opt-in needs flag+URL · no-op when off ·
+  leak-checked payload when on · `_post` swallows all errors).
+- Behavioral check: off by default; opted-in payload carries only operational keys, leak-check clean.
+- Wheel rebuilds clean: **12 modules** (telemetry incl.) + LICENSE + prompts bundled.
+
+### Open / Matthew's to do
+- Provide the collection endpoint (a Form / serverless URL): set `DEFAULT_TELEMETRY_URL` or hand
+  testers `WANDA_TELEMETRY_URL` in the invite.
+- Build the real feedback form from `FEEDBACK_FORM.md`; drop its link into GETTING_STARTED + notebook.
+- Then: commit everything → publish to PyPI → invite first DEP testers.
+
+---
+
+## 2026-06-14 — Beta-readiness audit + on-ramp hardening
+**Roadmap:** Phase 2 (beta prep)  ·  **Status:** blockers I own = cleared; 2 items need Matthew
+**Files:** new `LICENSE`, `docs/GETTING_STARTED.md`, `tests/test_fabric_tools.py`; changed
+`src/wanda/cli.py`, `src/wanda/fabric_tools.py`, `pyproject.toml`, `notebooks/Wanda_Template.ipynb`, `docs/README.md`
+
+### What changed
+- Ran a 4-lens beta-readiness audit (cold-start journey · robustness · beta-program · security).
+  Engine + safety = ready (0 blockers each); on-ramp + beta-program = not-ready.
+  **Verdict: not beta-ready yet — but the gap is the on-ramp, not the code.**
+- **Distribution decided (Matthew):** publish `wanda-fabric` to PyPI; repo stays private.
+- Cleared the on-ramp blockers I own:
+  - CLI no longer dumps raw tracebacks — an invalid/unfunded key, wrong SP secret, or
+    bad pipeline name now prints an actionable message + a GETTING_STARTED pointer (`cli.py`).
+  - SQL tools are now read-only **in code**, not just by prompt: `_is_read_only_sql` refuses
+    anything but `SELECT`/`WITH` before connecting (`fabric_tools.py`) + `tests/test_fabric_tools.py`.
+  - `LICENSE` added (proprietary beta-evaluation — have counsel review before wide release).
+  - `pyproject.toml`: `license` + full classifiers; the built wheel now bundles `LICENSE`.
+  - `docs/GETTING_STARTED.md`: a real ~15-min tester walkthrough (install + ODBC Driver 18 +
+    Anthropic key + Service Principal + workspace grant + run + troubleshooting + cost + privacy).
+  - Notebook + README: active install line → `wanda-fabric[sql]`; examples generic-ized
+    (no more `LoadSalesPipeline` for strangers); privacy note corrected (scan reads small row
+    samples, not "no data values"); both link GETTING_STARTED.
+
+### Verification
+- **38 tests pass** (added 4 for the read-only guard); guard hand-checked on 13 edge cases,
+  incl. underscore-protected names (`update_log`) and the subtle `SELECT … INTO` write.
+- Fresh wheel builds cleanly with the new metadata; bundles `LICENSE`
+  (`dist-info/licenses/LICENSE`) + both prompts + 11 modules; `[sql]`/`[mcp]`/`[all]` resolve.
+
+### Open / follow-ups
+- **Matthew:** (1) publish to PyPI — `python -m build` then `twine upload dist/*` (name is free);
+  (2) stand up a feedback form + minimal opt-in telemetry (needs your accounts).
+- Have counsel glance at `LICENSE` before a wide beta.
+- `requirements.txt` still redundant with pyproject — recommend deleting it.
+- Then commit everything + invite the first Data Engineering Pilipinas testers.
+
+---
+
 ## 2026-06-14 — Wanda is a pip-installable package (`wanda-fabric`) + reviewed
 **Roadmap:** Phase 2 (packaging + template notebook)  ·  **Status:** ✅ done, reviewed, fixes applied
 **Files:** new `pyproject.toml`, restructured `src/*.py` → `src/wanda/` package

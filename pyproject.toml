@@ -9,11 +9,18 @@ description = "An AI Data Engineer for Microsoft Fabric — investigates failed 
 readme = "docs/README.md"
 requires-python = ">=3.11"
 authors = [{ name = "CM Labs" }]
+license = { file = "LICENSE" }
 keywords = ["microsoft-fabric", "data-engineering", "llm", "agent", "root-cause-analysis"]
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Database",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent",
 ]
 # Core stays dependency-light so it installs cleanly in a Fabric notebook.
 dependencies = [

@@ -227,8 +227,31 @@ def _sql_connection_string(server: str, database: str) -> str:
     )
 
 
+# Wanda is read-only by contract. We enforce it in code (not just in the prompt):
+# a query must start with SELECT or WITH (a CTE) and contain no write/DDL verbs.
+_SQL_WRITE_KEYWORDS = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|MERGE|EXEC|EXECUTE|"
+    r"GRANT|REVOKE|INTO|BACKUP|RESTORE|SP_|XP_)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_read_only_sql(sql_query: str) -> bool:
+    """True only for plain read queries — SELECT / WITH and no mutating verbs."""
+    if not re.match(r"(?is)^\s*(SELECT|WITH)\b", sql_query):
+        return False
+    return _SQL_WRITE_KEYWORDS.search(sql_query) is None
+
+
 def _run_sql(server: str, database: str, sql_query: str, label: str) -> str:
-    """Run a T-SQL query over ODBC and format the result for the agent."""
+    """Run a read-only T-SQL query over ODBC and format the result for the agent."""
+    if not _is_read_only_sql(sql_query):
+        return (
+            f"Refused: Wanda only runs read-only queries, but this {label} query is "
+            f"not a plain SELECT/WITH statement. Wanda never modifies your workspace. "
+            f"Query was: {sql_query[:200]}"
+        )
+
     try:
         import pyodbc
     except ImportError:

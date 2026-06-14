@@ -1,0 +1,44 @@
+Wanda — Beta Evaluation License
+Copyright (c) 2026 CM Labs. All rights reserved.
+
+This software ("Wanda") is proprietary to CM Labs and is provided for
+closed-beta evaluation only. By installing or using Wanda you agree to the
+terms below.
+
+1. GRANT. CM Labs grants you a limited, non-exclusive, non-transferable,
+   revocable license to install and use Wanda solely to evaluate it against
+   your own Microsoft Fabric workspaces during the beta program.
+
+2. RESTRICTIONS. You may not (a) redistribute, sublicense, sell, rent, or
+   publish Wanda or any part of it; (b) modify, adapt, or create derivative
+   works for distribution; (c) reverse engineer, decompile, or disassemble
+   Wanda except to the extent this restriction is prohibited by law; (d) use
+   Wanda to build or train a competing product or service; or (e) remove or
+   alter any copyright, trademark, or other proprietary notices.
+
+3. FEEDBACK. If you give CM Labs feedback, suggestions, or bug reports, CM
+   Labs may use them for any purpose without obligation to you.
+
+4. YOUR DATA AND COSTS. Wanda runs against your own Fabric workspace using
+   your own credentials and your own LLM provider key. You are responsible
+   for those credentials, for any usage charges they incur, and for the
+   resources you point Wanda at.
+
+5. NO WARRANTY. Wanda is provided "AS IS" and "AS AVAILABLE", without
+   warranty of any kind, express or implied, including merchantability,
+   fitness for a particular purpose, and non-infringement. This is beta
+   software and may be incomplete, change, or be withdrawn at any time.
+
+6. LIMITATION OF LIABILITY. To the maximum extent permitted by law, CM Labs
+   shall not be liable for any indirect, incidental, special, consequential,
+   or punitive damages, or any loss of data, profits, or revenue, arising
+   out of or relating to your use of Wanda.
+
+7. TERMINATION. This license terminates automatically if you breach it, and
+   CM Labs may terminate the beta or this license at any time. On termination
+   you must stop using Wanda and delete all copies.
+
+8. RESERVATION OF RIGHTS. All rights not expressly granted here are reserved
+   by CM Labs.
+
+Contact: CM Labs — matthewarrogante@gmail.com
