@@ -164,6 +164,7 @@ Set in `.env` (see `.env.example`):
 | Variable | Purpose |
 |---|---|
 | `FABRIC_TENANT_ID` / `FABRIC_CLIENT_ID` / `FABRIC_CLIENT_SECRET` / `FABRIC_WORKSPACE_ID` | Service Principal + workspace |
+| `FABRIC_ACCESS_TOKEN` | bring-your-own-token: run as your own identity (e.g. a Fabric notebook's `notebookutils` token) instead of a Service Principal — `FABRIC_WORKSPACE_ID` still required. `FABRIC_SQL_ACCESS_TOKEN` does the same for the SQL-endpoint tools |
 | `WANDA_PROVIDER` | `anthropic` (default) · `azure-openai` · `azure-anthropic` |
 | `ANTHROPIC_API_KEY` | for the default `anthropic` provider |
 | `WANDA_MODEL` | optional model override (default `claude-sonnet-4-6`) |
@@ -188,7 +189,7 @@ wanda/
 │   ├── render_report.py      text → self-contained HTML report
 │   └── prompts/              investigate.md, scan.md (bundled package data)
 ├── notebooks/                template notebook for Fabric users
-├── tests/                    34 offline tests (providers, agent loop, config)
+├── tests/                    offline tests (providers, agent loop, config, fabric tools, telemetry)
 ├── docs/                     this README + architecture/business docs
 ├── presentations/            decks
 ├── reports/                  generated HTML reports (gitignored)

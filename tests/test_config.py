@@ -27,14 +27,35 @@ class TestClean(unittest.TestCase):
 
 
 class TestRequires(unittest.TestCase):
-    def test_require_fabric_lists_all_missing(self):
-        cfg = make_config(tenant_id=None, workspace_id=None)
+    def test_require_fabric_workspace_always_required(self):
+        cfg = make_config(workspace_id=None)
+        with self.assertRaises(ConfigError) as ctx:
+            cfg.require_fabric()
+        self.assertIn("FABRIC_WORKSPACE_ID", str(ctx.exception))
+
+    def test_require_fabric_lists_missing_service_principal_values(self):
+        # Workspace present, token absent → must list the missing SP values.
+        cfg = make_config(tenant_id=None, client_secret=None)
         with self.assertRaises(ConfigError) as ctx:
             cfg.require_fabric()
         message = str(ctx.exception)
         self.assertIn("FABRIC_TENANT_ID", message)
-        self.assertIn("FABRIC_WORKSPACE_ID", message)
-        self.assertNotIn("FABRIC_CLIENT_ID,", message)
+        self.assertIn("FABRIC_CLIENT_SECRET", message)
+        self.assertNotIn("FABRIC_CLIENT_ID,", message)  # client_id present → not listed
+
+    def test_require_fabric_token_mode_skips_service_principal(self):
+        # A bring-your-own-token + workspace is enough; no SP needed.
+        cfg = make_config(tenant_id=None, client_id=None, client_secret=None,
+                          fabric_access_token="tok")
+        self.assertIs(cfg.require_fabric(), cfg)
+
+    def test_require_fabric_token_without_workspace_still_fails(self):
+        # Workspace is required even in token mode — checked before the token.
+        cfg = make_config(workspace_id=None, tenant_id=None, client_id=None,
+                          client_secret=None, fabric_access_token="tok")
+        with self.assertRaises(ConfigError) as ctx:
+            cfg.require_fabric()
+        self.assertIn("FABRIC_WORKSPACE_ID", str(ctx.exception))
 
     def test_require_anthropic(self):
         with self.assertRaises(ConfigError):

@@ -17,4 +17,4 @@ try:
     from importlib.metadata import version
     __version__ = version("wanda-fabric")
 except Exception:  # running from a source tree that isn't installed
-    __version__ = "0.1.0"
+    __version__ = "0.1.1"

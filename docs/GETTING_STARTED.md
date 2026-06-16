@@ -50,6 +50,24 @@ tables) will be disabled.
 > Wanda uses Claude by default. You can instead point it at Azure OpenAI or
 > Azure-hosted Claude — see `WANDA_PROVIDER` in [.env.example](../.env.example).
 
+> **Shortcut — running inside a Fabric notebook?** You can skip steps 4–5 (the
+> Service Principal) entirely and run as *yourself*, using your existing workspace
+> access — nothing registered in Azure. In a notebook cell:
+>
+> ```python
+> import os, notebookutils
+> os.environ["FABRIC_ACCESS_TOKEN"] = notebookutils.credentials.getToken("pbi")
+> os.environ["FABRIC_WORKSPACE_ID"] = "your-workspace-guid"
+> # The SQL-endpoint checks need a SEPARATE token scoped to the Fabric SQL endpoint
+> # — a different audience than the REST token above. Confirm the right one for your
+> # tenant; without it the REST-based investigation still runs.
+> # os.environ["FABRIC_SQL_ACCESS_TOKEN"] = "<token scoped to the Fabric SQL endpoint>"
+> ```
+>
+> That's all the Fabric auth you need — set your Anthropic key (step 3) if you haven't,
+> then go to **step 7 (Run)**. The steps below (Service Principal) are only for running
+> Wanda **locally / outside a notebook**, or unattended.
+
 ## 4. Create a Fabric Service Principal
 
 A Service Principal is an app identity Wanda uses to call Fabric. In the

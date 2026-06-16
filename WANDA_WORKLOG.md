@@ -27,6 +27,42 @@ Entry template:
 
 ---
 
+## 2026-06-16 — Bring-your-own-token auth: run in a Fabric notebook, no Service Principal (v0.1.1)
+**Roadmap:** Phase 2 (adoption)  ·  **Status:** built + reviewed (3 lenses, 0 blockers); 0.1.1 wheel ready to publish
+**Files:** `src/wanda/config.py`, `src/wanda/fabric_tools.py`, `.env.example`, `docs/GETTING_STARTED.md`,
+`docs/README.md`, `notebooks/Wanda_Template.ipynb`, `tests/test_config.py`, `tests/test_fabric_tools.py`,
+`pyproject.toml` + `src/wanda/__init__.py` (0.1.0 → 0.1.1)
+
+### Why
+Matthew wants to test Wanda on his own enterprise project but does **not** want to create an Entra app
+registration + client secret (could trip his company's security review). Inside a Fabric notebook you can
+authenticate as **your own identity**, so the Service Principal can be optional.
+
+### What changed
+- `require_fabric()` now needs `FABRIC_WORKSPACE_ID` + **EITHER** a token **OR** the full Service Principal.
+- `get_token()` returns a supplied `FABRIC_ACCESS_TOKEN` directly — no app registration, no secret, no OAuth.
+- SQL tools use `FABRIC_SQL_ACCESS_TOKEN` injected via the ODBC `SQL_COPT_SS_ACCESS_TOKEN` attribute; absent
+  it they **skip cleanly** (the REST-based investigation still runs).
+- 401/403 messages, the 401 log line, and a startup INFO are now **auth-mode-aware** (no misleading
+  "Service Principal" wording in token mode); SQL failures hint at a wrong-audience token.
+
+### Verification
+- **49 tests pass** (+6 for token auth). Adversarial review (3 lenses) = **0 blockers**: gating correct,
+  ODBC token struct **empirically byte-correct** (4-byte LE length + UTF-16-LE, attr 1256), SP path
+  unchanged, no token leakage. Fixed every confirmed nit.
+- **0.1.1 wheel built** (12 modules + LICENSE + prompts), sitting in `dist/`.
+
+### ⚠️ UNVERIFIED against live Fabric (Matthew confirms in a notebook)
+- That `getToken("pbi")` yields a token `api.fabric.microsoft.com` accepts (the SP path uses the
+  `.../.default` audience). If REST calls 401, the audience needs adjusting — the new 401 message says so.
+- The correct audience for `FABRIC_SQL_ACCESS_TOKEN` (the Fabric SQL endpoint — different from REST).
+
+### Next
+- Matthew: republish 0.1.1 (`python -m build`; `twine upload dist/*`) → test in a notebook.
+- Then: feedback form + telemetry endpoint; invite DEP testers; Azure bake-off.
+
+---
+
 ## 2026-06-14 — Opt-in telemetry + feedback loop (last beta blocker I own)
 **Roadmap:** Phase 2 (beta prep)  ·  **Status:** client side built; endpoint + form are Matthew's
 **Files:** new `src/wanda/telemetry.py`, `docs/FEEDBACK_FORM.md`, `tests/test_telemetry.py`;

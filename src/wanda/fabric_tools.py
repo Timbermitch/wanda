@@ -47,7 +47,11 @@ def _config() -> Config:
 
 def ensure_configured() -> None:
     """Fail fast with a clear message if Fabric credentials are missing."""
-    _config()
+    cfg = _config()
+    if (cfg.fabric_access_token and not cfg.fabric_sql_access_token
+            and not (cfg.client_id and cfg.client_secret)):
+        logger.info("Running with a Fabric REST token; SQL-endpoint tools are disabled "
+                    "(set FABRIC_SQL_ACCESS_TOKEN to enable them).")
 
 
 # -----------------------------------------------------------------------------
@@ -60,6 +64,10 @@ _token_cache: dict[str, object] = {"token": None, "expires_at": 0.0}
 
 def get_token(force_refresh: bool = False) -> str:
     cfg = _config()
+    if cfg.fabric_access_token:
+        # Bring-your-own-token: caller supplied a Fabric API token (e.g. a Fabric
+        # notebook's own identity). Wanda can't refresh it — use it as-is.
+        return cfg.fabric_access_token
     now = time.time()
     cached = _token_cache["token"]
     if cached and not force_refresh and now < float(_token_cache["expires_at"]) - 60:
@@ -116,7 +124,11 @@ def fabric_request(method: str, url: str, **kwargs) -> requests.Response:
             raise
 
         if resp.status_code == 401 and attempt == 0:
-            logger.warning("401 from Fabric while calling %s — refreshing token", url)
+            if _config().fabric_access_token:
+                logger.warning("401 from Fabric while calling %s — supplied token may be "
+                               "expired (cannot auto-refresh a bring-your-own token)", url)
+            else:
+                logger.warning("401 from Fabric while calling %s — refreshing token", url)
             get_token(force_refresh=True)
             continue
 
@@ -139,10 +151,19 @@ def _http_error(resp: requests.Response, context: str) -> str | None:
     if resp.ok:
         return None
     code = resp.status_code
+    token_mode = bool(_config().fabric_access_token)
     if code == 401:
+        if token_mode:
+            return (f"Authentication failed (401) while {context}. Your Fabric token may be "
+                    f"expired or scoped to the wrong audience — re-acquire it in your notebook "
+                    f"with notebookutils.credentials.getToken('pbi').")
         return (f"Authentication failed (401) while {context}. "
                 f"Check the Service Principal client id and secret.")
     if code == 403:
+        if token_mode:
+            return (f"Permission denied (403) while {context}. Your identity lacks the required "
+                    f"role on this workspace or item — ask a workspace admin to grant you at "
+                    f"least Viewer, then retry.")
         return (f"Permission denied (403) while {context}. The Service Principal lacks the "
                 f"required role on this workspace or item (e.g. Workspace Contributor, or "
                 f"item-level read access). Grant it and retry.")
@@ -213,17 +234,30 @@ def get_item_names_by_id() -> dict[str, dict]:
     }
 
 
-def _sql_connection_string(server: str, database: str) -> str:
-    cfg = _config()
-    return (
+def _sql_token_struct(token: str) -> bytes:
+    """Pack an access token for ODBC's SQL_COPT_SS_ACCESS_TOKEN attribute."""
+    import struct
+    token_bytes = token.encode("utf-16-le")
+    return struct.pack(f"<I{len(token_bytes)}s", len(token_bytes), token_bytes)
+
+
+def _sql_connection_string(server: str, database: str, *, token_auth: bool = False) -> str:
+    base = (
         f"Driver={{ODBC Driver 18 for SQL Server}};"
         f"Server={server};"
         f"Database={database};"
-        f"Authentication=ActiveDirectoryServicePrincipal;"
-        f"UID={cfg.client_id};"
-        f"PWD={cfg.client_secret};"
         f"TrustServerCertificate=no;"
         f"Encrypt=yes;"
+    )
+    if token_auth:
+        # The access token is supplied via attrs_before — no UID/PWD/Authentication.
+        return base
+    cfg = _config()
+    return (
+        base
+        + f"Authentication=ActiveDirectoryServicePrincipal;"
+        + f"UID={cfg.client_id};"
+        + f"PWD={cfg.client_secret};"
     )
 
 
@@ -260,8 +294,23 @@ def _run_sql(server: str, database: str, sql_query: str, label: str) -> str:
             f"unavailable. Use list_lakehouse_tables for table existence checks instead."
         )
 
+    cfg = _config()
     try:
-        conn = pyodbc.connect(_sql_connection_string(server, database), timeout=30)
+        if cfg.fabric_sql_access_token:
+            SQL_COPT_SS_ACCESS_TOKEN = 1256  # inject the access token via ODBC
+            conn = pyodbc.connect(
+                _sql_connection_string(server, database, token_auth=True),
+                timeout=30,
+                attrs_before={SQL_COPT_SS_ACCESS_TOKEN: _sql_token_struct(cfg.fabric_sql_access_token)},
+            )
+        elif cfg.client_id and cfg.client_secret:
+            conn = pyodbc.connect(_sql_connection_string(server, database), timeout=30)
+        else:
+            return (
+                f"{label} query skipped: no SQL-endpoint credentials. Set "
+                f"FABRIC_SQL_ACCESS_TOKEN (a token scoped to the Fabric SQL endpoint) "
+                f"or a Service Principal. The REST-based checks still work without it."
+            )
         cursor = conn.cursor()
         cursor.execute(sql_query)
         rows = cursor.fetchall()
@@ -276,7 +325,11 @@ def _run_sql(server: str, database: str, sql_query: str, label: str) -> str:
         return f"Query results ({len(rows)} rows):\n" + "\n".join(result_lines)
 
     except Exception as e:
-        return f"{label} query failed: {str(e)}"
+        hint = ""
+        if cfg.fabric_sql_access_token:
+            hint = (" (If this is a login/auth error, FABRIC_SQL_ACCESS_TOKEN may have the wrong "
+                    "audience — it must be scoped to the Fabric SQL endpoint, not the REST API.)")
+        return f"{label} query failed: {str(e)}{hint}"
 
 
 # -----------------------------------------------------------------------------

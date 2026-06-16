@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wanda-fabric"
-version = "0.1.0"
+version = "0.1.1"
 description = "An AI Data Engineer for Microsoft Fabric — investigates failed pipelines and produces evidence-backed root-cause reports."
 readme = "docs/README.md"
 requires-python = ">=3.11"

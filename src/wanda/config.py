@@ -76,29 +76,44 @@ class Config:
     azure_anthropic_deployment: str | None = None
     base_url: str = FABRIC_BASE_URL
     default_lakehouse: str = DEFAULT_LAKEHOUSE
+    # Bring-your-own-token: a pre-acquired Fabric API token (e.g. from a Fabric
+    # notebook's own identity via notebookutils) used instead of a Service
+    # Principal. fabric_sql_access_token is the same idea for the SQL endpoint.
+    fabric_access_token: str | None = None
+    fabric_sql_access_token: str | None = None
 
     # -- validation -----------------------------------------------------------
     def require_fabric(self) -> "Config":
-        """Ensure the four Fabric Service Principal values are present.
+        """Ensure Wanda can authenticate to Fabric: a workspace id, plus EITHER a
+        pre-supplied access token (bring-your-own-token — e.g. a Fabric notebook's
+        own identity) OR a full Service Principal (tenant + client id + secret).
 
         Returns ``self`` so it chains: ``config = load_config().require_fabric()``.
         """
-        missing = [
+        if not self.workspace_id:
+            raise ConfigError(
+                "Missing FABRIC_WORKSPACE_ID — set it to your workspace GUID "
+                "(the id in the app.fabric.microsoft.com/groups/<id>/ URL)."
+            )
+        if self.fabric_access_token:
+            return self  # bring-your-own-token — no Service Principal required
+
+        sp_missing = [
             name
             for name, value in (
                 ("FABRIC_TENANT_ID", self.tenant_id),
                 ("FABRIC_CLIENT_ID", self.client_id),
                 ("FABRIC_CLIENT_SECRET", self.client_secret),
-                ("FABRIC_WORKSPACE_ID", self.workspace_id),
             )
             if not value
         ]
-        if missing:
+        if sp_missing:
             raise ConfigError(
-                "Missing or unfilled Fabric credentials: "
-                + ", ".join(missing)
-                + ". Copy .env.example to .env and fill in your Service Principal "
-                "values (tenant, client id, client secret, workspace id)."
+                "Wanda needs Fabric authentication. Either:\n"
+                "  (a) FABRIC_ACCESS_TOKEN — a Fabric API token; inside a Fabric "
+                "notebook get one with notebookutils.credentials.getToken('pbi'); or\n"
+                "  (b) a Service Principal — missing: " + ", ".join(sp_missing) + ".\n"
+                "FABRIC_WORKSPACE_ID is required either way."
             )
         return self
 
@@ -160,6 +175,8 @@ def load_config() -> Config:
         client_id=_clean(os.getenv("FABRIC_CLIENT_ID")),
         client_secret=_clean(os.getenv("FABRIC_CLIENT_SECRET")),
         workspace_id=_clean(os.getenv("FABRIC_WORKSPACE_ID")),
+        fabric_access_token=_clean(os.getenv("FABRIC_ACCESS_TOKEN")),
+        fabric_sql_access_token=_clean(os.getenv("FABRIC_SQL_ACCESS_TOKEN")),
         anthropic_api_key=_clean(os.getenv("ANTHROPIC_API_KEY")),
         model=_clean(os.getenv("WANDA_MODEL")),
         provider=_clean(os.getenv("WANDA_PROVIDER")) or "anthropic",

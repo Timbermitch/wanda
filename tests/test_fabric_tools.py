@@ -5,7 +5,9 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from wanda.fabric_tools import _is_read_only_sql, _run_sql
+import wanda.fabric_tools as ft
+from wanda.config import Config
+from wanda.fabric_tools import _is_read_only_sql, _run_sql, _sql_token_struct
 
 
 class TestReadOnlySqlGuard(unittest.TestCase):
@@ -41,6 +43,34 @@ class TestReadOnlySqlGuard(unittest.TestCase):
         out = _run_sql("server", "db", "DROP TABLE t", "SQL")
         self.assertIn("Refused", out)
         self.assertIn("read-only", out)
+
+
+class TokenAuthTest(unittest.TestCase):
+    def setUp(self):
+        self._orig_cfg = ft._cfg
+
+    def tearDown(self):
+        ft._cfg = self._orig_cfg
+
+    def test_get_token_uses_supplied_token_without_http(self):
+        # With a bring-your-own-token, get_token returns it directly — no SP, no HTTP.
+        ft._cfg = Config(tenant_id=None, client_id=None, client_secret=None,
+                         workspace_id="w", anthropic_api_key=None,
+                         fabric_access_token="my-fabric-token")
+        self.assertEqual(ft.get_token(), "my-fabric-token")
+
+    def test_sql_token_struct_is_length_prefixed_utf16(self):
+        packed = _sql_token_struct("abc")
+        # 4-byte little-endian length prefix, then UTF-16-LE bytes (6 for "abc").
+        self.assertEqual(packed[:4], (6).to_bytes(4, "little"))
+        self.assertEqual(packed[4:], "abc".encode("utf-16-le"))
+
+    def test_run_sql_skips_cleanly_when_no_credentials(self):
+        ft._cfg = Config(tenant_id=None, client_id=None, client_secret=None,
+                         workspace_id="w", anthropic_api_key=None)
+        out = _run_sql("server", "db", "SELECT 1", "SQL")
+        # Graceful skip (no crash) whether pyodbc is absent or creds are missing.
+        self.assertTrue(any(s in out.lower() for s in ("skipped", "not installed", "unavailable")), out)
 
 
 if __name__ == "__main__":
