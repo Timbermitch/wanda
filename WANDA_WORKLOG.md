@@ -27,6 +27,29 @@ Entry template:
 
 ---
 
+## 2026-06-17 — ✅ Token mode VERIFIED LIVE in a Fabric notebook
+**Roadmap:** Phase 2 (validation)  ·  **Status:** ✅ passed end-to-end
+**Files:** `notebooks/Wanda_Template.ipynb` (cleaned to valid nbformat)
+
+### Result
+- Matthew ran `wanda-fabric` 0.1.1 inside a real Fabric notebook with bring-your-own-token:
+  `os.environ["FABRIC_ACCESS_TOKEN"] = notebookutils.credentials.getToken("pbi")`.
+- **`getToken("pbi")` IS accepted by api.fabric.microsoft.com** — the previously-unverified
+  REST audience is now CONFIRMED working live. No Service Principal, no app registration.
+- `Wanda().investigate("DailySalesETL")` ran clean: 3 REST tool calls over 4 turns in 23.8s,
+  default model claude-sonnet-4-6, prompt caching active, rendered an HTML root-cause report.
+- SQL tools correctly auto-disabled (no `FABRIC_SQL_ACCESS_TOKEN`) via the startup INFO message,
+  by design; the REST investigation still completed.
+
+### Follow-ups
+- Fabric's `.ipynb` importer 400s on generic notebooks; the reliable path is create-in-Fabric
+  (or Export FROM Fabric to get an import-clean template). Template cleaned to valid nbformat regardless.
+- **SECURITY:** test notebook had the Anthropic key inline → rotate it; push testers to Key Vault /
+  workspace secrets.
+- `FABRIC_SQL_ACCESS_TOKEN` audience for the SQL-endpoint tools still unverified live.
+
+---
+
 ## 2026-06-16 — Bring-your-own-token auth: run in a Fabric notebook, no Service Principal (v0.1.1)
 **Roadmap:** Phase 2 (adoption)  ·  **Status:** built + reviewed (3 lenses, 0 blockers); 0.1.1 wheel ready to publish
 **Files:** `src/wanda/config.py`, `src/wanda/fabric_tools.py`, `.env.example`, `docs/GETTING_STARTED.md`,

@@ -16,20 +16,20 @@ def _reports_dir() -> Path:
 
 CSS = """
 :root {
-    --bg: #0a0d12;
-    --surface: #11161d;
-    --surface-elevated: #161b22;
-    --border: #262d36;
-    --border-subtle: #1c222a;
-    --text: #f0f6fc;
-    --text-soft: #c9d1d9;
-    --text-muted: #7d8590;
-    --accent: #58a6ff;
-    --accent-2: #a371f7;
-    --success: #56d364;
-    --warning: #e3b341;
-    --danger: #ff7b72;
-    --code-bg: #1a1f27;
+    --bg: #f6f8fc;
+    --surface: #ffffff;
+    --surface-elevated: #f4f7fc;
+    --border: #d9e1ee;
+    --border-subtle: #e8eef6;
+    --text: #0e1626;
+    --text-soft: #2b3651;
+    --text-muted: #5b6680;
+    --accent: #2f7df6;
+    --accent-2: #1763d6;
+    --success: #0e9f6e;
+    --warning: #b7791f;
+    --danger: #d64545;
+    --code-bg: #f1f5fb;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -41,8 +41,7 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     background:
-        radial-gradient(ellipse 1100px 720px at 18% -10%, rgba(88,166,255,0.07), transparent 60%),
-        radial-gradient(ellipse 900px 600px at 95% 0%, rgba(163,113,247,0.06), transparent 55%),
+        radial-gradient(ellipse 1100px 680px at 50% -10%, rgba(47,125,246,0.06), transparent 62%),
         var(--bg);
     background-attachment: fixed;
 }
@@ -76,6 +75,7 @@ header {
     border: 1px solid var(--border-subtle);
     border-radius: 10px;
     padding: 13px 15px;
+    box-shadow: 0 1px 2px rgba(16,24,40,0.04);
     transition: border-color 160ms ease;
 }
 .meta-card:hover { border-color: var(--border); }
@@ -131,6 +131,7 @@ section {
     border-radius: 14px;
     padding: 26px 30px;
     margin-bottom: 14px;
+    box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 6px 18px rgba(16,24,40,0.05);
     transition: border-color 200ms ease, transform 200ms ease;
 }
 section:hover { border-color: var(--border); }
@@ -153,8 +154,8 @@ section h2::before {
 }
 
 section.root-cause {
-    background: linear-gradient(180deg, var(--surface), rgba(17,22,29,0.6));
-    border: 1px solid rgba(255,123,114,0.22);
+    background: linear-gradient(180deg, #ffffff, #fff6f5);
+    border: 1px solid rgba(214,69,69,0.28);
 }
 section.root-cause h2 { color: var(--danger); }
 section.root-cause h2::before { background: var(--danger); }
